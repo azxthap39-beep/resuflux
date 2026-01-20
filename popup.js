@@ -2,15 +2,11 @@
 // --- STATE MANAGEMENT ---
 const state = {
     currentJD: '',
-    resumes: [
-        { id: null, name: null, text: null, scoreData: null }, // Resume A
-        { id: null, name: null, text: null, scoreData: null }  // Resume B
-    ]
+    resumes: [] // Dynamic array for N resumes
 };
 
 const ELEMENTS = {
     fileInputA: document.getElementById('fileInputA'),
-    fileInputB: document.getElementById('fileInputB'),
     jdInput: document.getElementById('jdInput'),
     jdContainer: document.getElementById('jdInputContainer'),
     scrapeBtn: document.getElementById('scrapeBtn'),
@@ -31,8 +27,7 @@ async function initPopup() {
         // await loadHistory();
 
         // 3. Attach Listeners
-        if (ELEMENTS.fileInputA) ELEMENTS.fileInputA.addEventListener('change', (e) => handleFileSelect(e, 0));
-        if (ELEMENTS.fileInputB) ELEMENTS.fileInputB.addEventListener('change', (e) => handleFileSelect(e, 1));
+        if (ELEMENTS.fileInputA) ELEMENTS.fileInputA.addEventListener('change', (e) => handleFileSelect(e));
         if (ELEMENTS.jdInput) ELEMENTS.jdInput.addEventListener('input', handleJDChange);
 
         // Listen for Context Menu updates (Real-time)
@@ -189,80 +184,115 @@ function sendMessageWithTimeout(tabId, message, timeoutMs) {
 // --- RENDERING (V5 ShadCN) ---
 
 function renderView() {
-    const resumeA = state.resumes[0];
-    const resumeB = state.resumes[1];
-
-    // Update Drop Labels
+    // Update Drop Zone Label
     const labelA = document.getElementById('fileALabel');
-    const labelB = document.getElementById('fileBLabel');
-    if (labelA) labelA.textContent = resumeA.name ? (resumeA.name.substring(0, 15) + "...") : "Upload PDF";
-    if (labelB) labelB.textContent = resumeB.name ? (resumeB.name.substring(0, 15) + "...") : "Optional";
+    if (labelA) {
+        labelA.textContent = state.resumes.length > 0 ? `${state.resumes.length} Resumes Added` : "Upload Resumes";
+    }
 
-    // Style Active Drop Zones
     const zoneA = document.getElementById('dropZoneA');
-    const zoneB = document.getElementById('dropZoneB');
-    if (zoneA) zoneA.className = resumeA.name ? 'file-drop-zone active' : 'file-drop-zone';
-    if (zoneB) zoneB.className = resumeB.name ? 'file-drop-zone active' : 'file-drop-zone';
+    if (zoneA) zoneA.className = state.resumes.length > 0 ? 'file-drop-zone active' : 'file-drop-zone';
 
-    // Check if we have anything to score
-    if (!resumeA.scoreData && !resumeB.scoreData) {
-        document.getElementById('scoreSection').classList.add('hidden');
+    // Results Section
+    const container = document.getElementById('scoreSection');
+    if (state.resumes.length === 0) {
+        container.classList.add('hidden');
         document.getElementById('suggestionsSection').classList.add('hidden');
         return;
     }
 
-    const container = document.getElementById('scoreSection');
     container.classList.remove('hidden');
     container.innerHTML = ''; // Clear
 
-    // Update Field/Industry Badge
+    // Update Field Badge
     const fieldEl = document.getElementById('displayField');
-    const firstScore = resumeA.scoreData || resumeB.scoreData;
-    if (fieldEl && firstScore) {
-        fieldEl.textContent = firstScore.field || "General";
+    const scoredResumes = state.resumes.filter(r => r.scoreData);
+    if (fieldEl && scoredResumes.length > 0) {
+        fieldEl.textContent = scoredResumes[0].scoreData.field || "General";
     }
 
-    // Filter valid resumes
-    const validResumes = [resumeA, resumeB].filter(r => r.scoreData);
+    // Determine Winner
+    let winnerId = null;
+    let maxScore = -1;
+    scoredResumes.forEach((r, idx) => {
+        if (r.scoreData.total > maxScore) {
+            maxScore = r.scoreData.total;
+            winnerId = idx;
+        }
+    });
 
-    if (validResumes.length > 1) {
-        // COMPARISON GRID
-        const grid = document.createElement('div');
+    // Create Grid
+    const grid = document.createElement('div');
+    if (scoredResumes.length === 2) {
         grid.className = 'grid-2';
+    } else if (scoredResumes.length > 2) {
+        grid.style.display = 'grid';
+        grid.style.gridTemplateColumns = 'repeat(auto-fill, minmax(160px, 1fr))';
+    }
+    grid.style.gap = '12px';
 
-        validResumes.forEach(r => {
-            const card = createScoreCard(r);
-            grid.appendChild(card);
+    scoredResumes.forEach((r, idx) => {
+        const isWinner = scoredResumes.length > 1 && maxScore > 0 && idx === winnerId;
+        const card = createScoreCard(r, isWinner);
+        grid.appendChild(card);
+    });
+    container.appendChild(grid);
+
+    // AI Intelligence Rendering (V1.4)
+    const aiSection = document.getElementById('aiIntelligenceSection');
+    const aiExplanation = document.getElementById('aiExplanation');
+    const aiGaps = document.getElementById('aiGaps');
+    const aiSuggestionsList = document.getElementById('aiSuggestionsList');
+
+    if (scoredResumes.length > 0 && window.ResuFluxAI) {
+        aiSection.style.display = 'block';
+        const bestResume = scoredResumes[winnerId || 0];
+
+        // 1. Explain Score
+        aiExplanation.textContent = window.ResuFluxAI.explainScore(bestResume.scoreData);
+
+        // 2. Explain Gaps
+        aiGaps.innerHTML = window.ResuFluxAI.explainSkillGaps(bestResume.scoreData);
+
+        // 3. AI Suggestions
+        aiSuggestionsList.innerHTML = '';
+        const aiTips = window.ResuFluxAI.getAISuggestions(bestResume.scoreData);
+        aiTips.forEach(tip => {
+            const tipDiv = document.createElement('div');
+            tipDiv.style = "padding:12px; border-radius:var(--radius); border:1px solid var(--border); background:var(--card); box-shadow: 0 2px 4px rgba(0,0,0,0.02);";
+            tipDiv.innerHTML = `
+                <div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <div style="width:2px; height:12px; background:var(--primary); border-radius:2px;"></div>
+                    <div style="font-size:12px; font-weight:700; color:var(--foreground);">${tip.tip}</div>
+                </div>
+                <div style="font-size:11px; color:var(--muted-foreground); line-height:1.4; margin-bottom:8px;">${tip.reason}</div>
+                <div style="font-size:9px; font-weight:800; text-transform:uppercase; color:var(--primary); opacity:0.7; letter-spacing:0.05em;">Suggested Fix: ${tip.location}</div>
+            `;
+            aiSuggestionsList.appendChild(tipDiv);
         });
-        container.appendChild(grid);
-    } else {
-        // SINGLE VIEW
-        const card = createScoreCard(validResumes[0]);
-        container.appendChild(card);
     }
 
     // Suggestions (Dynamic for all resumes)
     const suggestionList = document.getElementById('suggestionList');
     suggestionList.innerHTML = '';
 
-    let hasSuggestions = false;
-    validResumes.forEach(r => {
-        if (r.scoreData && r.scoreData.suggestions && r.scoreData.suggestions.length > 0) {
-            hasSuggestions = true;
-            if (validResumes.length > 1) {
-                const header = document.createElement('li');
-                header.style = "font-weight:700; font-size:10px; margin-top:12px; margin-bottom:4px; color:var(--muted-foreground); text-transform:uppercase; letter-spacing:0.05em; list-style:none;";
-                header.textContent = r.name;
-                suggestionList.appendChild(header);
-            }
-            r.scoreData.suggestions.forEach(s => {
-                const li = document.createElement('li');
-                li.style = "margin:6px 0; font-size:12px; line-height:1.5; color:var(--foreground); padding-left:14px; position:relative;";
-                li.innerHTML = `<span style="position:absolute; left:0; color:var(--muted-foreground);">&bull;</span>${s}`;
-                suggestionList.appendChild(li);
-            });
-        }
-    });
+    let hasSuggestions = scoredResumes.length > 0;
+
+    // Winner Suggestion
+    if (scoredResumes.length > 1 && winnerId !== null) {
+        const winner = scoredResumes[winnerId];
+        const winnerTip = document.createElement('li');
+        winnerTip.style = "margin:0px 0 20px; font-size:13px; line-height:1.5; color:var(--foreground); font-weight:600; padding:16px; background:linear-gradient(135deg, #f5f3ff 0%, #f0f9ff 100%); border-radius:var(--radius); list-style:none; border:1px solid rgba(99,102,241,0.15); box-shadow: var(--shadow-sm);";
+        winnerTip.innerHTML = `
+            <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-size:20px; filter: drop-shadow(0 0 8px rgba(99,102,241,0.3));">✨</span>
+                <div>
+                   <div class="outfit" style="color:var(--primary); font-size:11px; text-transform:uppercase; letter-spacing:0.1em; margin-bottom:2px; font-weight:800;">Strategic Recommendation</div>
+                   <div style="opacity:0.9;">Deploy <span style="font-weight:700; color:var(--primary);">"${winner.name}"</span> for maximum conversion.</div>
+                </div>
+            </div>`;
+        suggestionList.appendChild(winnerTip);
+    }
 
     if (hasSuggestions) {
         document.getElementById('suggestionsSection').classList.remove('hidden');
@@ -271,41 +301,55 @@ function renderView() {
     }
 }
 
-function createScoreCard(resume) {
+function createScoreCard(resume, isWinner = false) {
     const data = resume.scoreData;
     const score = data.total;
 
-    // Color Logic
-    let color = '#71717a'; // Muted
-    if (score >= 70) color = '#22c55e'; // Green
-    else if (score >= 40) color = '#eab308'; // Yellow
+    // Enterprise-Grade Colors
+    let color = '#94a3b8'; // Slate
+    if (score >= 80) color = '#10b981'; // Emerald
+    else if (score >= 60) color = '#f59e0b'; // Amber
     else if (score > 0) color = '#ef4444'; // Red
 
     const div = document.createElement('div');
     div.className = 'card';
+    if (isWinner) {
+        div.style.border = '2px solid #6366f1';
+        div.style.boxShadow = '0 12px 30px -10px rgba(99, 102, 241, 0.25)';
+    }
+
     div.innerHTML = `
-        <div class="card-content" style="text-align:center; padding: 20px 16px;">
-            <div style="font-weight:600; font-size:12px; margin-bottom:16px; color:var(--muted-foreground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">
+        <div class="card-content" style="text-align:center; padding: 24px 16px; position:relative;">
+            ${isWinner ? `
+                <div class="outfit" style="position:absolute; top:-12px; left:50%; transform:translateX(-50%); background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color:white; font-size:10px; font-weight:700; padding:4px 14px; border-radius:99px; text-transform:uppercase; letter-spacing:0.1em; border: 2px solid white; box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);">
+                    Best Fit Match
+                </div>` : ''}
+            
+            <div class="outfit" style="font-weight:700; font-size:13px; margin-bottom:20px; color:var(--foreground); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; letter-spacing:-0.01em;">
                 ${resume.name}
             </div>
 
-            <div class="gauge-circle" style="background: conic-gradient(${color} ${score}%, var(--secondary) ${score}%);">
-                <div class="gauge-center" style="color:${color}">${score}</div>
+            <div class="gauge-circle" style="background: conic-gradient(${color} ${score}%, transparent ${score}%); box-shadow: inset 0 0 0 7px var(--secondary);">
+                <div class="gauge-center">
+                    <span class="outfit" style="color:${color}; font-size:24px; margin-top:2px;">${score}</span>
+                    <span style="font-size:9px; color:var(--muted-foreground); margin-top:-4px; font-weight:800; text-transform:uppercase; letter-spacing:0.05em; opacity: 0.8;">Score</span>
+                </div>
             </div>
             
-            <div style="font-weight:600; font-size:14px; margin-bottom:2px;">Match Score</div>
-            <div class="text-sm text-muted-foreground">${data.keywordData.matches.length} keywords found</div>
+            <div class="outfit" style="font-weight:700; font-size:15px; margin-bottom:4px; color:var(--foreground); letter-spacing:-0.01em;">Match Ranking</div>
+            <div style="font-size:11px; color:var(--muted-foreground); font-weight:600;">${data.keywordData.matches.length} keywords validated</div>
 
-            <div style="margin-top:16px; text-align:left; border-top:1px solid var(--border); padding-top:12px;">
-                <div style="font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--muted-foreground); margin-bottom:8px;">
-                    Missing Keywords
+            <div style="margin-top:24px; text-align:left; border-top:1px solid var(--border); padding-top:16px;">
+                <div class="outfit" style="font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:0.1em; color:var(--muted-foreground); margin-bottom:12px; display:flex; align-items:center; gap:8px;">
+                    <span style="display:block; width:6px; height:6px; background:var(--destructive); border-radius:50%; animation: pulse 2s infinite;"></span>
+                    Technical Skill Gaps
                 </div>
-                <div style="display:flex; flex-wrap:wrap; gap:6px;">
+                <div style="display:flex; flex-wrap:wrap; gap:8px;">
                     ${data.keywordData.missing.length > 0
             ? data.keywordData.missing.slice(0, 8).map(k =>
-                `<span class="badge" style="color:var(--destructive); border-color: rgba(239, 68, 68, 0.1); background: rgba(239, 68, 68, 0.05);">${k}</span>`
+                `<span class="badge" style="color:var(--destructive); border:none; background: #fff1f2; font-weight:700; font-size:10px; padding:4px 12px;">${k}</span>`
             ).join('')
-            : '<span class="text-sm text-muted-foreground">Perfect match!</span>'}
+            : '<span class="text-sm" style="color:var(--primary); font-weight:800; font-family:Outfit;">Maximum Match Performance</span>'}
                 </div>
             </div>
         </div>
@@ -315,56 +359,42 @@ function createScoreCard(resume) {
 
 // --- ACTIONS ---
 
-async function handleFileSelect(e, index) {
-    const file = e.target.files[0];
-    if (!file) return;
+async function handleFileSelect(e) {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-    state.resumes[index] = { id: null, name: file.name, text: null, scoreData: null };
+    for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        const resumeObj = { id: null, name: file.name, text: null, scoreData: null };
+        const index = state.resumes.length;
+        state.resumes.push(resumeObj);
 
-    try {
-        updateSyncStatus("Parsing...");
-        let text = '';
-        if (file.name.endsWith('.pdf')) text = await parsePdf(file);
-        else if (file.name.endsWith('.docx')) text = await parseDocx(file);
-        else text = await file.text(); // txt
+        try {
+            updateSyncStatus(`Processing ${i + 1}/${files.length}: ${file.name}...`);
+            let text = '';
+            if (file.name.endsWith('.pdf')) text = await parsePdf(file);
+            else if (file.name.endsWith('.docx')) text = await parseDocx(file);
+            else text = await file.text();
 
-        if (!text || text.length < 50) throw new Error("Empty or unreadable file.");
+            if (!text || text.length < 50) throw new Error("Empty or unreadable file.");
 
-        state.resumes[index].text = text;
-        console.log(`📄 Parsed resume "${file.name}": ${text.length} characters`);
+            state.resumes[index].text = text;
 
-        // Supabase Save
-        console.log('🔍 Checking SupabaseService:', window.SupabaseService ? '✅ Available' : '❌ Not found');
-
-        if (window.SupabaseService) {
-            console.log(`📤 Calling upsertResume for "${file.name}"...`);
-            updateSyncStatus("Uploading to Supabase...");
-
-            const rid = await window.SupabaseService.upsertResume(file.name, text);
-
-            if (rid) {
-                state.resumes[index].id = rid;
-                console.log(`✅ Resume uploaded successfully! ID: ${rid}`);
-                updateSyncStatus(`Synced! ID: ${rid}`);
-            } else {
-                console.warn('⚠️ Upload returned null - check Supabase logs above');
-                updateSyncStatus("Upload failed - check console");
+            if (window.SupabaseService) {
+                updateSyncStatus(`Syncing ${file.name}...`);
+                const rid = await window.SupabaseService.upsertResume(file.name, text);
+                if (rid) state.resumes[index].id = rid;
             }
-        } else {
-            console.warn('⚠️ Supabase not available - skipping upload');
-            updateSyncStatus("Supabase disabled");
+
+            recalculateAll();
+
+        } catch (err) {
+            console.error('❌ File error:', err);
+            state.resumes[index].error = err.message;
         }
-
-        recalculateAll();
-
-        // Clear status after 3 seconds
-        setTimeout(() => updateSyncStatus(""), 3000);
-
-    } catch (err) {
-        console.error('❌ File processing error:', err);
-        state.resumes[index].error = err.message;
-        renderView();
     }
+    updateSyncStatus("Done!");
+    setTimeout(() => updateSyncStatus(""), 2000);
 }
 
 function handleJDChange(e) {
@@ -407,13 +437,14 @@ async function recalculateAll() {
 // --- PERSISTENCE ---
 
 function saveSessionLocally() {
+    if (state.resumes.length === 0) return;
+
     const session = {
         id: Date.now(),
         date: new Date().toLocaleDateString(),
-        jdSummary: state.metadata ? state.metadata.company : "Unknown Job",
+        jdSummary: state.metadata ? state.metadata.company : (state.currentJD ? "Manual JD" : "Unknown Job"),
         resumes: state.resumes.map(r => ({ name: r.name, score: r.scoreData?.total }))
     };
-    if (!session.resumes.some(r => r.name)) return;
 
     chrome.storage.local.get(['history'], (res) => {
         const h = res.history || [];
