@@ -14,20 +14,49 @@ if (typeof window === 'undefined') {
 
 const ATS_LOGIC = (function () {
 
-    // --- 1. KNOWLEDGE BASE (The "Booster" Set) ---
-    // These get higher weights, but they are NOT the only things we look for.
+    // --- 1. KNOWLEDGE BASE (Expanded for Global Roles) ---
     const ONTOLOGY = {
-        // TECH
-        "javascript": 3, "typescript": 3, "react": 3, "python": 3, "java": 3, "aws": 3,
-        "node": 3, "sql": 3, "graphql": 2, "docker": 2, "kubernetes": 3,
+        // TECH & DATA
+        "javascript": 3, "react": 3, "python": 3, "java": 3, "aws": 3, "typescript": 3,
+        "node": 2, "sql": 3, "docker": 2, "kubernetes": 2, "machine learning": 3,
+        "data science": 3, "cloud architecture": 3, "cybersecurity": 3,
 
-        // DESIGN
-        "figma": 3, "sketch": 2, "product design": 3, "user research": 3,
-        "wireframing": 2, "prototyping": 2, "design system": 3,
+        // DESIGN & CREATIVE
+        "figma": 3, "product design": 3, "user research": 3, "wireframing": 2,
+        "design system": 3, "adobe creative suite": 2, "ux": 3, "ui": 3,
 
-        // PRODUCT/BIZ
-        "agile": 2, "scrum": 2, "roadmap": 2, "strategy": 2, "kpi": 2,
-        "stakeholder": 2, "leadership": 2, "mentorship": 2
+        // HEALTHCARE & MEDICAL
+        "patient care": 3, "clinical": 3, "nursing": 3, "medical records": 2,
+        "hipaa": 3, "diagnosis": 3, "treatment plan": 2, "cpr": 2, "icu": 3,
+
+        // FINANCE & BUSINESS
+        "accounting": 3, "financial analysis": 3, "budgeting": 2, "excel": 2,
+        "audit": 3, "risk management": 3, "investment": 2, "macroeconomics": 2,
+
+        // SALES & MARKETING
+        "crm": 2, "seo": 3, "sem": 2, "content strategy": 3, "lead generation": 3,
+        "copywriting": 2, "b2b": 2, "b2c": 2, "social media": 2,
+
+        // LAW & COMPLIANCE
+        "legal research": 3, "litigation": 3, "contract law": 3, "compliance": 3,
+        "regulatory": 2, "affidavit": 2, "jurisprudence": 3,
+
+        // EDUCATION
+        "curriculum": 3, "pedagogy": 3, "classroom management": 3, "lesson planning": 2,
+        "special education": 3, "assessment": 2,
+
+        // SOFT SKILLS (UNIVERSAL)
+        "agile": 2, "scrum": 2, "roadmap": 2, "strategy": 3, "kpi": 2,
+        "stakeholder": 2, "leadership": 3, "mentorship": 2, "problem solving": 2
+    };
+
+    const INDUSTRY_MAP = {
+        "Technology": ["javascript", "python", "software", "developer", "cloud", "data", "engineer", "aws", "cybersecurity"],
+        "Design": ["figma", "sketch", "ux", "ui", "creative", "product design", "adobe"],
+        "Medical": ["patient", "clinical", "nursing", "hospital", "medical", "doctor", "health", "nrs", "rn"],
+        "Business": ["business", "finance", "accounting", "strategy", "roadmap", "kpi", "manager", "operations"],
+        "Legal": ["legal", "law", "attorney", "paralegal", "compliance", "regulatory", "contract"],
+        "Education": ["teaching", "education", "school", "university", "curriculum", "pedagogy", "student"]
     };
 
     // Words to explicitly ignore even if they appear frequently
@@ -61,31 +90,34 @@ const ATS_LOGIC = (function () {
             return emptyScore();
         }
 
-        // A. Extract Target Model from JD
-        // This is the "Ideal Candidate" profile derived dynamically
-        const jdProfile = analyzeJobDescription(jdText);
+        // A. Detect Role/Field
+        const detectedField = detectIndustry(jdText);
 
-        // B. Analyze Resume
-        const resumeProfile = analyzeResume(resumeText);
+        // B. Extract Target Model from JD
+        const jdProfile = analyzeJobDescription(jdText, detectedField);
 
-        // C. Calculate Coverage
+        // C. Analyze Resume
+        const resumeProfile = analyzeResume(resumeText, detectedField);
+
+        // D. Calculate Coverage
         const matchResult = calculateCoverage(resumeProfile, jdProfile);
 
-        // D. Generate Score
+        // E. Generate Score
         let totalScore = Math.round(
-            (matchResult.score * 0.85) +
-            (resumeProfile.structureScore * 0.15)
+            (matchResult.score * 0.80) +
+            (resumeProfile.structureScore * 0.20)
         );
         totalScore = Math.min(100, Math.max(0, totalScore));
 
         return {
             total: totalScore,
+            field: detectedField,
             keywordData: {
                 matches: matchResult.matches,
                 missing: matchResult.missing,
                 score: matchResult.score
             },
-            suggestions: generateSuggestions(matchResult, resumeProfile),
+            suggestions: generateSuggestions(matchResult, resumeProfile, detectedField),
             details: matchResult
         };
     }
@@ -98,9 +130,29 @@ const ATS_LOGIC = (function () {
         };
     }
 
+    function detectIndustry(text) {
+        const lower = text.toLowerCase();
+        let bestField = "General";
+        let maxHits = 0;
+
+        for (const [field, markers] of Object.entries(INDUSTRY_MAP)) {
+            let hits = 0;
+            markers.forEach(m => {
+                const regex = new RegExp(`\\b${m}\\b`, 'gi');
+                const count = (text.match(regex) || []).length;
+                hits += count;
+            });
+            if (hits > maxHits) {
+                maxHits = hits;
+                bestField = field;
+            }
+        }
+        return bestField;
+    }
+
     // --- 3. JD ANALYSIS (The "Reasoning" Brain) ---
 
-    function analyzeJobDescription(text) {
+    function analyzeJobDescription(text, field) {
         const cleanText = text.toLowerCase().replace(/[^\w\s-]/g, ' ');
         const tokens = cleanText.split(/\s+/).filter(t => t.length > 2);
 
@@ -163,12 +215,20 @@ const ATS_LOGIC = (function () {
 
     // --- 4. RESUME ANALYSIS ---
 
-    function analyzeResume(text) {
+    function analyzeResume(text, field) {
         const lower = text.toLowerCase();
         let structureScore = 50;
-        if (lower.includes('experience') || lower.includes('employment')) structureScore += 20;
+
+        // General structure
+        if (lower.includes('experience') || lower.includes('employment')) structureScore += 15;
         if (lower.includes('education') || lower.includes('university')) structureScore += 10;
-        if (lower.includes('skills') || lower.includes('technologies')) structureScore += 20;
+        if (lower.includes('skills') || lower.includes('technologies')) structureScore += 15;
+
+        // Industry Specific Structure
+        if (field === 'Medical' && (lower.includes('certification') || lower.includes('licensed'))) structureScore += 10;
+        if (field === 'Design' && (lower.includes('portfolio') || lower.includes('behance'))) structureScore += 10;
+        if (field === 'Technology' && (lower.includes('projects') || lower.includes('github'))) structureScore += 10;
+
         if (text.length < 500) structureScore -= 30;
 
         return { text: lower, structureScore };
@@ -226,9 +286,15 @@ const ATS_LOGIC = (function () {
         return phrases;
     }
 
-    function generateSuggestions(matchResult, resumeProfile) {
+    function generateSuggestions(matchResult, resumeProfile, field) {
         const tips = [];
         if (matchResult.score < 50) tips.push("Low Relevance: Try adding more specific keywords from the job description.");
+
+        // Field Specific Tips
+        if (field === 'Medical' && !resumeProfile.text.includes('license')) tips.push("Tip: Medical roles often require explicit license/certification info.");
+        if (field === 'Technology' && !resumeProfile.text.includes('github')) tips.push("Tip: Adding a GitHub link can boost credibility for tech roles.");
+        if (field === 'Design' && !resumeProfile.text.includes('portfolio')) tips.push("Tip: Ensure your portfolio link is clearly visible.");
+
         if (matchResult.missing.length > 0) {
             const missingCaps = matchResult.missing.map(w => w.charAt(0).toUpperCase() + w.slice(1));
             tips.push(`Consider adding: <span style="font-weight:500; color:var(--foreground)">${missingCaps.join(', ')}</span>`);

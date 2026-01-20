@@ -215,6 +215,13 @@ function renderView() {
     container.classList.remove('hidden');
     container.innerHTML = ''; // Clear
 
+    // Update Field/Industry Badge
+    const fieldEl = document.getElementById('displayField');
+    const firstScore = resumeA.scoreData || resumeB.scoreData;
+    if (fieldEl && firstScore) {
+        fieldEl.textContent = firstScore.field || "General";
+    }
+
     // Filter valid resumes
     const validResumes = [resumeA, resumeB].filter(r => r.scoreData);
 
