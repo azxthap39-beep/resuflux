@@ -14,6 +14,67 @@ if (typeof window === 'undefined') {
 
 const ATS_LOGIC = (function () {
 
+    // --- 0. SEMANTIC ENGINE (Notebook Port) ---
+    function tokenize(text) {
+        if (!text) return [];
+        // Preprocess: split by common symbols, remove punctuation, split by space
+        const cleanText = text.toLowerCase().replace(/[^\w\s]/g, ' ');
+        const tokens = cleanText.split(/\s+/).filter(t => t.length > 1 && !STOPWORDS.has(t));
+        return tokens;
+    }
+
+    function calculateSemanticScore(resumeText, jdText) {
+        const jdTokens = tokenize(jdText);
+        const resumeTokens = tokenize(resumeText);
+
+        // Bag of Words (Frequency)
+        const vocab = new Set([...jdTokens, ...resumeTokens]);
+        const jdVec = createVector(jdTokens, vocab);
+        const resumeVec = createVector(resumeTokens, vocab);
+
+        // Cosine Similarity
+        const similarity = getCosineSimilarity(jdVec, resumeVec);
+
+        // Notebook Log-Log Scaling Logic
+        // scores = np.log(scores * 100) -> np.log(result)
+        let sim100 = (similarity * 100) + 1; // +1 to avoid log(0)
+        let log1 = Math.log(sim100);
+        let log2 = log1 > 0 ? Math.log(log1) : 0;
+
+        // The notebook normalizes against a 'perfect resume' (approx 1.5) and maps to 0-5
+        // We'll normalize back to 0-100 for the UI
+        // Perfect (log(log(100))) is ~1.52. 0.8 / 1.52 * 100 = ~52
+        // We'll map log2 of ~1.5 to 100
+        const semanticFinal = Math.min(100, (log2 / 1.5) * 100);
+
+        console.log(`🧠 Semantic Analysis: Sim=${similarity.toFixed(4)}, LogScore=${log2.toFixed(4)}, Final=${semanticFinal.toFixed(0)}`);
+        return semanticFinal;
+    }
+
+    function createVector(tokens, vocab) {
+        const freqMap = {};
+        tokens.forEach(t => freqMap[t] = (freqMap[t] || 0) + 1);
+
+        const vector = [];
+        vocab.forEach(word => {
+            vector.push(freqMap[word] || 0);
+        });
+        return vector;
+    }
+
+    function getCosineSimilarity(vecA, vecB) {
+        let dotProduct = 0;
+        let normA = 0;
+        let normB = 0;
+        for (let i = 0; i < vecA.length; i++) {
+            dotProduct += vecA[i] * vecB[i];
+            normA += vecA[i] * vecA[i];
+            normB += vecB[i] * vecB[i];
+        }
+        if (normA === 0 || normB === 0) return 0;
+        return dotProduct / (Math.sqrt(normA) * Math.sqrt(normB));
+    }
+
     // --- 1. KNOWLEDGE BASE (Expanded for Global Roles) ---
     const ONTOLOGY = {
         // TECH & DATA
@@ -99,12 +160,19 @@ const ATS_LOGIC = (function () {
         // C. Analyze Resume
         const resumeProfile = analyzeResume(resumeText, detectedField);
 
-        // D. Calculate Coverage
+        // D. Calculate Coverage (Keyword Match)
         const matchResult = calculateCoverage(resumeProfile, jdProfile);
 
-        // E. Generate Score
+        // E. Calculate Semantic Similarity (Notebook Port)
+        const semanticScoreRaw = calculateSemanticScore(resumeText, jdText);
+
+        // F. Final Blended Score
+        // 50% Semantic (Core Concept)
+        // 30% Keyword (Strict Compliance)
+        // 20% Structure (Professionalism)
         let totalScore = Math.round(
-            (matchResult.score * 0.80) +
+            (semanticScoreRaw * 0.50) +
+            (matchResult.score * 0.30) +
             (resumeProfile.structureScore * 0.20)
         );
         totalScore = Math.min(100, Math.max(0, totalScore));
@@ -112,6 +180,7 @@ const ATS_LOGIC = (function () {
         return {
             total: totalScore,
             field: detectedField,
+            semanticScore: Math.round(semanticScoreRaw),
             keywordData: {
                 matches: matchResult.matches,
                 missing: matchResult.missing,
@@ -302,7 +371,15 @@ const ATS_LOGIC = (function () {
         return tips;
     }
 
-    return { scoreResume };
+    function extractEmail(text) {
+        if (!text) return null;
+        // Robust regex for email detection
+        const emailRegex = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b/;
+        const match = text.match(emailRegex);
+        return match ? match[0] : null;
+    }
+
+    return { scoreResume, extractEmail };
 
 })();
 

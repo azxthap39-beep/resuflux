@@ -172,6 +172,30 @@
             padding: 3px 12px;
         }
 
+
+
+        /* ACTIONS */
+        .action-container {
+            margin-top: 16px;
+            padding-top: 16px;
+            border-top: 1px solid var(--border);
+            text-align: center;
+        }
+
+        #emailActionBtn {
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+            border: none;
+            width: 100%;
+            height: 40px;
+            font-size: 13px;
+        }
+
+        #emailActionBtn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
         /* GRID */
         .grid-2 {
             display: grid;
@@ -299,6 +323,7 @@
     <script src="supabase.js"></script>
     <script src="atsLogic.js"></script> <!-- V5 Logic -->
     <script src="aiService.js"></script> <!-- AI Heuristics -->
+    <script src="emailTemplate.js"></script>
     <script src="popup.js" defer></script>
 </head>
 
@@ -348,6 +373,29 @@
                 <div id="jdInputContainer" class="hidden mt-2">
                     <textarea id="jdInput" rows="6" placeholder="Paste Job Description here..."></textarea>
                 </div>
+
+                <!-- EMAIL ACTION (Initial Hidden) -->
+                <div id="emailActionContainer" class="action-container hidden"
+                    style="margin-top:16px; padding-top:16px; border-top:1px solid var(--border); text-align:center;">
+                    <button id="emailActionBtn" class="btn"
+                        style="background: linear-gradient(135deg, #10b981 0%, #059669 100%); color: white; width: 100%; height: 40px; font-size: 13px;">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                            stroke-width="2" style="margin-right:6px;">
+                            <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z">
+                            </path>
+                            <polyline points="22,6 12,13 2,6"></polyline>
+                        </svg>
+                        Draft Email to Hiring Manager
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2.5 SAVED LIBRARY -->
+        <div id="savedResumesContainer"
+            style="margin-bottom:16px; border:1px dashed var(--border); padding:10px; border-radius:6px;">
+            <div id="historyList" style="text-align:center; font-size:11px; color:var(--muted-foreground);">
+                Loading saved resumes...
             </div>
         </div>
 
@@ -361,7 +409,10 @@
                 <div style="font-size: 11px; color: var(--muted-foreground); margin-top: 4px;">Drop multiple PDF, DOCX,
                     or TXT files</div>
             </label>
+
         </div>
+
+
 
         <!-- 3. SCORE DASHBOARD -->
         <div id="scoreSection" class="hidden">
@@ -392,13 +443,55 @@
         </div>
 
         <!-- HISTORY (Hidden per request) -->
-        <div style="margin-top:20px;" class="hidden">
-            <div class="text-sm font-semibold mb-2" style="color:var(--muted-foreground)">RECENT SCANS</div>
-            <div id="historyList"></div>
-        </div>
+        <!-- HISTORY REMOVED FROM BOTTOM -->
 
         <!-- BOTTOM STATUS -->
         <div id="syncStatus" style="text-align:center; margin-top:20px; font-size:10px; color:var(--muted-foreground);">
+        </div>
+
+        <!-- 5. EMAIL TEMPLATE MODAL -->
+        <div id="emailTemplateModal" class="hidden"
+            style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.5); z-index:100; display:flex; align-items:center; justify-content:center; padding:20px;">
+            <div class="card"
+                style="width:100%; max-width:320px; background:white; padding:0; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);">
+                <div class="card-header"
+                    style="padding:16px; border-bottom:1px solid var(--border); display:flex; justify-content:space-between; align-items:center;">
+                    <h4 class="card-title">Compose Email</h4>
+                    <button id="closeModalBtn"
+                        style="background:none; border:none; color:var(--muted-foreground); cursor:pointer;">✕</button>
+                </div>
+
+                <div class="card-content" style="padding:16px;">
+                    <div class="mb-2">
+                        <label
+                            style="font-size:11px; font-weight:700; color:var(--muted-foreground); display:block; margin-bottom:4px;">SUBJECT
+                            LINE</label>
+                        <input type="text" id="emailSubjectInput"
+                            style="width:100%; border:1px solid var(--border); padding:8px; border-radius:var(--radius); font-size:12px; font-family:var(--font-sans);">
+                    </div>
+
+                    <div class="mb-2">
+                        <label
+                            style="font-size:11px; font-weight:700; color:var(--muted-foreground); display:block; margin-bottom:4px;">BODY</label>
+                        <textarea id="emailBodyInput" rows="8"
+                            style="width:100%; border:1px solid var(--border); padding:8px; border-radius:var(--radius); font-size:12px; font-family:var(--font-sans);"></textarea>
+                    </div>
+
+                    <div
+                        style="font-size:10px; color:var(--muted-foreground); background:#f3f4f6; padding:8px; border-radius:4px; margin-bottom:16px;">
+                        <strong>Tip:</strong> Don't forget to attach your resume file manually! <br>
+                        (Browser security prevents auto-attaching)
+                    </div>
+
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:8px;">
+                        <button id="cancelEmailBtn" class="btn btn-ghost"
+                            style="border:1px solid var(--border); justify-content:center;">Cancel</button>
+                        <button id="sendEmailBtn" class="btn btn-primary"
+                            style="justify-content:center; background:linear-gradient(135deg, #10b981 0%, #059669 100%); border:none;">Open
+                            Mail App ↗</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
     </div>
